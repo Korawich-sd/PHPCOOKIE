@@ -1,0 +1,637 @@
+<?php
+
+use function PHPSTORM_META\type;
+
+defined('BASEPATH') or exit('No direct script access allowed');
+require_once('application/controllers/Main_controller.php');
+
+
+
+class C_product_action_plan extends Main_controller
+{
+
+    function __construct()
+    {
+        parent::__construct();
+        $this->load->library("session");
+        $this->load->model('M_hr', 'hr');
+        $this->load->model('M_product_action_plan', 'm_plan');
+    }
+
+
+    public function index()
+    {
+        $data['data_plan'] = $this->m_plan->get_product_plan_number();
+        $data['data_emp'] = $this->hr->get_all_user();
+        $this->output('product_action_plan/manage_plan', $data);
+    }
+
+    //สร้างแผน
+    public function create_plan()
+    {
+        $company = $this->input->post('company'); //บริษัท
+        $create_date = $this->input->post('create_date'); //วันที่สร้าง
+        $start_month = $this->input->post('start_month'); //เดือนที่เริ่มสร้าง
+        $depCode = $this->input->post('depCode'); //รหัสแผนก
+
+        $number = "";
+        $n = 1;
+        $year_no = date('Y') + 543;
+        $year_num = $company . mb_substr($year_no, -2);
+        //check เลขที่แผนงาน
+        $data_no = $this->m_plan->get_max_number($company);
+
+        if (!empty($data_no)) {
+            $no = $n + $data_no[0]['ppn_order'];
+            $no1 = str_pad($no, 3, '0', STR_PAD_LEFT);
+            $number = "$year_num/$no1"; //เลขที่
+        } else {
+            $no = 1;
+            $number = "$year_num" . "/001";
+        }
+
+        $data_ppn = [
+            'ppn_number' => $number,
+            'ppn_order' => $no,
+            'ppn_company' => $company,
+            'ppn_create_date' => $create_date,
+            'ppn_start_month' => $start_month,
+            'ppn_status' => '1',
+            'ppn_revise' => '0',
+            'ppn_depCode' => $depCode
+        ];
+
+        $id_plan = $this->m_plan->save_product_plan_number($data_ppn);
+
+        if ($id_plan) {
+            $this->output('product_action_plan/manage_plan_list');
+            echo '<script>setTimeout(function() {window.location.href = "' . site_url('/') . 'C_product_action_plan/manage_plan_list/' . $id_plan . '";}, 1);</script>';
+        }
+    }
+
+    //หน้าจัดการ list plan
+    public function manage_plan_list($id_plan)
+    {
+        $data['plan_number'] = $this->m_plan->get_data_plan_number($id_plan);
+        $data['plan_list'] = $this->m_plan->get_data_plan_list($id_plan);
+        $this->output('product_action_plan/manage_plan_list', $data);
+    }
+
+    //หน้าเพิ่ม list plan
+    public function create_plan_list($id_plan)
+    {
+        $data['plan_number'] = $this->m_plan->get_data_plan_number($id_plan);
+        $data['assignment'] = $this->m_plan->get_data_assignment();
+        $this->output('product_action_plan/add_plan_list', $data);
+    }
+
+    //หน้าแก้ไข list plan
+    public function edit_plan_list($id_plan, $id_list)
+    {
+        $data['assignment'] = $this->m_plan->get_data_assignment();
+        $data['plan_number'] = $this->m_plan->get_data_plan_number($id_plan);
+        $data['plan_list'] = $this->m_plan->get_data_plan_list_by_id($id_list);
+        $data['plan_date'] = $this->m_plan->get_data_plan_date($id_list);
+        $this->output('product_action_plan/edit_plan_list', $data);
+    }
+
+    //บันทึก list plan
+    public function save_plan_list()
+    {
+        $order_work_number = $this->input->post('order_work_number'); //แบบสั่งงานเลขที่
+        $tmp_lot = $this->input->post('lot'); //งวดที่
+        $job_code = $this->input->post('job_code'); //รหัสงาน
+        $model = $this->input->post('model'); //ชื่อรุ่นผลิตภัณฑ์
+        $ppn_id = $this->input->post('ppn_id'); //ID แผนงาน
+        $note = $this->input->post('note'); //หมายเหตุ
+
+        if ($tmp_lot != '-') {
+            $tmp_lot_split = explode("/", $tmp_lot);
+            $lot = $tmp_lot_split[1]. "/" . $tmp_lot_split[2];
+        }else{
+            $lot = $tmp_lot;
+        }
+
+
+        $fstart_work = $this->input->post('fstart_work'); //วันเริ่มงานสั่งซื้อ
+        $fend_work = $this->input->post('fend_work'); //วันสิ้นสุดงานสั่งซื้อ
+        $sstart_work = $this->input->post('sstart_work'); //วันเริ่มงานผลิต
+        $send_work = $this->input->post('send_work'); //วันสิ้นสุดงานผลิต
+        $tstart_work = $this->input->post('tstart_work'); //วันเริ่มงานประกอบ
+        $tend_work = $this->input->post('tend_work'); //วันสิ้นสุดงานประกอบ
+        $texpire_work = $this->input->post('texpire_work'); //วันหมดสัญญาประกอบ
+
+        $f_week = $this->input->post('f-week'); //ของสั่งซื้อ
+        $s_week = $this->input->post('s-week'); //ของผลิต
+        $t_week = $this->input->post('t-week'); //ของประกอบ
+
+
+        //บันทึกหมายเหตุ
+        $data_note = [
+            'ppn_note' => $note,
+            'ppn_id' => $ppn_id
+        ];
+
+        $this->m_plan->update_note($data_note);
+
+
+        //ข้อมูลลงตาราง product_plan_list
+        $data_list = [
+            'ppl_order_number' => $order_work_number,
+            'ppl_job_code' => $job_code,
+            'ppl_lot' => $lot,
+            'ppl_model' => $model,
+            'ppn_id' => $ppn_id
+        ];
+
+        $id_list = $this->m_plan->save_list($data_list);
+
+        // 1 = สั่งซื้อ, 2 = ผลิต, 3 = ประกอบ
+        // สั่งซื้อ
+        if (!empty($f_week)) {
+            for ($i = 0; $i < count($f_week); $i++) {
+                $cut_date = explode("/", $f_week[$i]);
+
+                $data_date = [
+                    'ppd_month' => $cut_date[0],
+                    'ppd_week' => $cut_date[1],
+                    'ppd_type' => '1',
+                    'ppn_id' => $ppn_id,
+                    'ppl_id' => $id_list,
+                    'ppd_start_date' => $fstart_work,
+                    'ppd_end_date' => $fend_work,
+                ];
+
+                $this->m_plan->save_date($data_date);
+            }
+        }
+
+        // ผลิต
+        if (!empty($s_week)) {
+            for ($i = 0; $i < count($s_week); $i++) {
+                $cut_date = explode("/", $s_week[$i]);
+
+                $data_date = [
+                    'ppd_month' => $cut_date[0],
+                    'ppd_week' => $cut_date[1],
+                    'ppd_type' => '2',
+                    'ppn_id' => $ppn_id,
+                    'ppl_id' => $id_list,
+                    'ppd_start_date' => $sstart_work,
+                    'ppd_end_date' => $send_work,
+                ];
+
+                $this->m_plan->save_date($data_date);
+            }
+        }
+
+        // ประกอบ
+        if (!empty($t_week)) {
+            for ($i = 0; $i < count($t_week); $i++) {
+                $cut_date = explode("/", $t_week[$i]);
+
+                $data_date = [
+                    'ppd_month' => $cut_date[0],
+                    'ppd_week' => $cut_date[1],
+                    'ppd_type' => '3',
+                    'ppn_id' => $ppn_id,
+                    'ppl_id' => $id_list,
+                    'ppd_start_date' => $tstart_work,
+                    'ppd_end_date' => $tend_work,
+                    'ppd_expire_date' => $texpire_work
+                ];
+
+                $this->m_plan->save_date($data_date);
+            }
+        }
+
+
+        echo '<script>setTimeout(function() {window.location.href = "' . site_url('/') . 'C_product_action_plan/manage_plan_list/' . $ppn_id . '";}, 1);</script>';
+    }
+
+    //แก้ไข list plan
+    public function edit_data_plan_list()
+    {
+        $order_work_number = $this->input->post('order_work_number'); //แบบสั่งงานเลขที่
+        $tmp_lot = $this->input->post('lot'); //งวดที่
+        $job_code = $this->input->post('job_code'); //รหัสงาน
+        $model = $this->input->post('model'); //ชื่อรุ่นผลิตภัณฑ์
+        $ppn_id = $this->input->post('ppn_id'); //ID แผนงาน
+        $ppl_id = $this->input->post('ppl_id'); //ID list
+        $note = $this->input->post('note'); //หมายเหตุ
+
+        if ($tmp_lot != '-') {
+            $tmp_lot_split = explode("/", $tmp_lot);
+            $lot = $tmp_lot_split[1]. "/" . $tmp_lot_split[2];
+        }else{
+            $lot = $tmp_lot;
+        }
+
+        $fstart_work = $this->input->post('fstart_work'); //วันเริ่มงานสั่งซื้อ
+        $fend_work = $this->input->post('fend_work'); //วันสิ้นสุดงานสั่งซื้อ
+        $sstart_work = $this->input->post('sstart_work'); //วันเริ่มงานผลิต
+        $send_work = $this->input->post('send_work'); //วันสิ้นสุดงานผลิต
+        $tstart_work = $this->input->post('tstart_work'); //วันเริ่มงานประกอบ
+        $tend_work = $this->input->post('tend_work'); //วันสิ้นสุดงานประกอบ
+        $texpire_work = $this->input->post('texpire_work'); //วันหมดสัญญาประกอบ
+
+        $f_week = $this->input->post('f-week'); //ของสั่งซื้อ
+        $s_week = $this->input->post('s-week'); //ของผลิต
+        $t_week = $this->input->post('t-week'); //ของประกอบ
+
+
+        //บันทึกหมายเหตุ
+        $data_note = [
+            'ppn_note' => $note,
+            'ppn_id' => $ppn_id
+        ];
+
+        $this->m_plan->update_note($data_note);
+
+        //ข้อมูลลงตาราง product_plan_list
+        $data_list = [
+            'ppl_order_number' => $order_work_number,
+            'ppl_job_code' => $job_code,
+            'ppl_lot' => $lot,
+            'ppl_model' => $model,
+            'ppl_id' => $ppl_id
+        ];
+
+        $edit_list = $this->m_plan->edit_list($data_list);
+
+        // 1 = สั่งซื้อ, 2 = ผลิต, 3 = ประกอบ
+        //ลบข้อมูลเก่าแล้วเพิ่มข้อมูลใหม่
+        $del_plan_old_list = $this->m_plan->del_plan_date($ppl_id);
+
+        // สั่งซื้อ
+        if (!empty($f_week)) {
+            for ($i = 0; $i < count($f_week); $i++) {
+                $cut_date = explode("/", $f_week[$i]);
+
+                $data_date = [
+                    'ppd_month' => $cut_date[0],
+                    'ppd_week' => $cut_date[1],
+                    'ppd_type' => '1',
+                    'ppn_id' => $ppn_id,
+                    'ppl_id' => $ppl_id,
+                    'ppd_start_date' => $fstart_work,
+                    'ppd_end_date' => $fend_work,
+                ];
+
+                $this->m_plan->save_date($data_date);
+            }
+        }
+
+        // ผลิต
+        if (!empty($s_week)) {
+            for ($i = 0; $i < count($s_week); $i++) {
+                $cut_date = explode("/", $s_week[$i]);
+
+                $data_date = [
+                    'ppd_month' => $cut_date[0],
+                    'ppd_week' => $cut_date[1],
+                    'ppd_type' => '2',
+                    'ppn_id' => $ppn_id,
+                    'ppl_id' => $ppl_id,
+                    'ppd_start_date' => $sstart_work,
+                    'ppd_end_date' => $send_work,
+                ];
+
+                $this->m_plan->save_date($data_date);
+            }
+        }
+
+        // ประกอบ
+        if (!empty($t_week)) {
+            for ($i = 0; $i < count($t_week); $i++) {
+                $cut_date = explode("/", $t_week[$i]);
+
+                $data_date = [
+                    'ppd_month' => $cut_date[0],
+                    'ppd_week' => $cut_date[1],
+                    'ppd_type' => '3',
+                    'ppn_id' => $ppn_id,
+                    'ppl_id' => $ppl_id,
+                    'ppd_start_date' => $tstart_work,
+                    'ppd_end_date' => $tend_work,
+                    'ppd_expire_date' => $texpire_work
+                ];
+
+                $this->m_plan->save_date($data_date);
+            }
+        }
+
+
+        echo '<script>setTimeout(function() {window.location.href = "' . site_url('/') . 'C_product_action_plan/manage_plan_list/' . $ppn_id . '";}, 1);</script>';
+    }
+
+
+    //delete plan list
+    public function delete_plan_list($ppl_id)
+    {
+        $del_list =  $this->m_plan->delete_plan_list($ppl_id);
+        $del_date =  $this->m_plan->del_plan_date($ppl_id);
+
+        echo '<script>window.history.back()</script>';
+    }
+
+    //get ข้อมูลจาก ASSNumber
+    public function getASSNumber()
+    {
+        $ASSDetail = $this->input->post('ASSDetail');
+        $tmp_ASSDetail = str_replace('\\', '', $ASSDetail);
+        $getData = $this->m_plan->getASSNumber($tmp_ASSDetail);
+        echo json_encode($getData);
+    }
+
+
+    //get งวด
+    public function get_lot()
+    {
+        $ASSNumber = $this->input->post('ASSNumber');
+        $getData = $this->m_plan->get_lot($ASSNumber);
+        echo json_encode($getData);
+    }
+
+    //get ชื่อผลิตภัณฑ์
+    public function get_model()
+    {
+        $ASSNumber = $this->input->post('ASSNumber');
+        $getData = $this->m_plan->get_model($ASSNumber);
+        echo json_encode($getData);
+    }
+
+    // get_model_by_lot
+    public function get_model_by_lot()
+    {
+        $ASSNumber = $this->input->post('ASSNumber');
+        $Lot = $this->input->post('Lot');
+
+        $getData = $this->m_plan->get_model_by_lot($ASSNumber, $Lot);
+        echo json_encode($getData);
+    }
+
+    //รายงานแผน
+    public function report($id_plan = '')
+    {
+        if ($id_plan != '') {
+            $data['plan_number'] = $this->m_plan->get_data_plan_number($id_plan);
+            $data['plan_list'] = $this->m_plan->get_data_plan_list($id_plan);
+            $data['plan_empsign'] = $this->m_plan->get_data_plan_empsign($id_plan);
+            $this->load->view('report/3120-3220-001/FP_3120_3220_001_REV1', $data);
+        } else {
+            $this->load->view('report/3120-3220-001/FP_3120_3220_001_blank_form');
+        }
+    }
+
+    //ลบแผน
+    public function remove_plan($id_plan)
+    {
+        $del =  $this->m_plan->remove_plan($id_plan);
+
+        if ($del) {
+            echo '<script>window.history.back()</script>';
+        }
+    }
+
+    //ส่งแผนลงนาม
+    public function submit_plan()
+    {
+        $ppn_number = $this->input->post('ppn_number'); //เลขที่แผนงาน
+        $reporter = $this->input->post('reporter'); //empCode ผู้รายงาน
+        $heademp = $this->input->post('heademp'); //empCode ผจก.โรงงาน
+        $ppn_id = $this->input->post('ppn_id'); //Id แผนงาน
+
+        $data = [
+            'ppn_number' => $ppn_number,
+            'ppn_id' => $ppn_id,
+            'ppe_main_reporter' => $reporter,
+            'ppe_main_approve' => $heademp,
+        ];
+
+        //บันทึกข้อมูลในตาราง product_plan_empsign
+        $save = $this->m_plan->save_empsign($data);
+
+        //อัพเดท status แผนงาน
+        $data_status = [
+            'ppn_status' => '2',
+            'ppn_id' => $ppn_id
+        ];
+
+        $update_status = $this->m_plan->update_status_plan($data_status);
+
+        //ส่งลงนามใน sign_data_history
+        $sdh_path = 'main/utah_planning/index.php/C_product_action_plan/report/' . $ppn_id;
+
+        // ของผู้รายงาน
+        $sign_data_reporter = [
+            'sdh_sfh_id' => '293',
+            'sdh_report_id' => $ppn_id,
+            'sdh_no' => $ppn_number,
+            'sdh_section' => '1',
+            'sdh_path' => $sdh_path,
+            'sdh_level' => '1',
+            'sdh_main_emp' =>  $reporter,
+            'sdh_main_datetime' => date('Y-m-d H:i:s'),
+            'sdh_read' => '1',
+            'sdh_usage' => '1',
+            'sdh_message' => 'ลงนาม',
+            'sdh_notify' => '2',
+        ];
+
+        $sign_reporter = $this->m_plan->send_to_sign($sign_data_reporter);
+
+        // ของผู้ผจก.
+        $sign_data_approve = [
+            'sdh_sfh_id' => '293',
+            'sdh_report_id' => $ppn_id,
+            'sdh_no' => $ppn_number,
+            'sdh_section' => '1',
+            'sdh_path' => $sdh_path,
+            'sdh_level' => '2',
+            'sdh_main_emp' =>  $heademp,
+            'sdh_main_datetime' => date('Y-m-d H:i:s'),
+            'sdh_read' => '1',
+            'sdh_usage' => '2',
+            'sdh_message' => 'ลงนาม',
+            'sdh_notify' => '1',
+        ];
+
+        $sign_approve = $this->m_plan->send_to_sign($sign_data_approve);
+
+        if ($save && $update_status && $sign_reporter && $sign_approve) {
+            echo '<script>window.history.back()</script>';
+        }
+    }
+
+    //update ลายเซ็นผู้รายงาน
+    public function update_signature_reporter()
+    {
+        $ppn_number = $this->input->post('ppn_number'); //เลขที่แผนงาน
+        $ppn_id = $this->input->post('ppn_id'); //id แผนงาน
+        $empCode = $this->input->post('empCode'); //รหัสพนักงาน
+
+        $data = [
+            'ppn_id' => $ppn_id,
+            'ppe_reporter_sign' => $empCode,
+            'ppe_reporter_date' => date('Y-m-d H:i:s')
+        ];
+
+        $update = $this->m_plan->update_signature_reporter($data);
+
+        //update การลงนาม
+        $sign_data_update = [
+            'sdh_sfh_id' => '293',
+            'sdh_report_id' => $ppn_id,
+            'sdh_level' => '1',
+            'sdh_confirm_emp' => $empCode,
+            'sdh_confirm_datetime' => date('Y-m-d H:i:s')
+        ];
+
+        $this->m_plan->update_sign_data_history($sign_data_update);
+
+        //แสดงให้ผจกเห็น
+        $update_view_head = [
+            'sdh_sfh_id' => '293',
+            'sdh_report_id' => $ppn_id,
+            'sdh_level' => '2',
+            'sdh_usage' => '1',
+            'sdh_notify' => '2'
+        ];
+
+        $this->m_plan->update_view_head($update_view_head);
+
+        if ($update) {
+            echo '<script>window.history.back()</script>';
+        }
+    }
+
+    //update ลายเซ็นผจก
+    public function update_signature_approve()
+    {
+        $ppn_number = $this->input->post('ppn_number'); //เลขที่แผนงาน
+        $empCode = $this->input->post('empCode'); //รหัสพนักงาน
+        $ppn_id = $this->input->post('ppn_id'); //id แผนงาน
+
+        $data = [
+            'ppn_id' => $ppn_id,
+            'ppe_approve_sign' => $empCode,
+            'ppe_approve_date' => date('Y-m-d H:i:s')
+        ];
+
+        $update = $this->m_plan->update_signature_approve($data);
+
+        $sign_data_update = [
+            'sdh_sfh_id' => '293',
+            'sdh_report_id' => $ppn_id,
+            'sdh_level' => '2',
+            'sdh_confirm_emp' => $empCode,
+            'sdh_confirm_datetime' => date('Y-m-d H:i:s')
+        ];
+
+        $update_sign =  $this->m_plan->update_sign_data_history($sign_data_update);
+
+        if ($update && $update_sign) {
+            //อัพเดท status แผนงาน
+            $data_status = [
+                'ppn_status' => '3',
+                'ppn_id' => $ppn_id
+            ];
+
+            $update_status = $this->m_plan->update_status_plan($data_status);
+
+            //ลบข้อมูลใน sign_data_history
+            $sign_data_remove = [
+                'sdh_sfh_id' => '293',
+                'sdh_report_id' => $ppn_id,
+            ];
+
+            $this->m_plan->remove_to_sign($sign_data_remove);
+
+            echo '<script>window.history.back()</script>';
+        }
+    }
+
+    //checkpassword
+    public function checkpassword($signPassword = '') //check รหัสลายเซ็นต์
+    {
+        if ($signPassword != null) {
+            $check = $this->m_plan->check_password(MD5($signPassword));
+        } elseif ($signPassword == null) {
+            $password = $_GET['password'];
+            $check = $this->m_plan->check_password(MD5($password));
+        }
+        if (!$check) {
+            echo json_encode(['success' => false]);
+        } else {
+            echo json_encode(['success' => true]);
+        }
+    }
+
+    //ขอ revise แผน
+    public function revise($id_plan = '')
+    {
+        $id_plan = $id_plan;
+
+        //Clone แผนงานเก่า เพื่อสร้างแผนงาน Revise ใหม่
+        //Clone ตาราง product_plan_number
+        $data_plan_number = $this->m_plan->get_data_plan_number($id_plan);
+
+        //Clone ตาราง product_plan_list
+        $data_plan_list = $this->m_plan->get_data_plan_list($id_plan);
+
+        //Clone ตาราง product_plan_date
+        $data_plan_date = $this->m_plan->get_data_plan_date_by_id_plan($id_plan);
+
+
+        $data_ppn = [
+            'ppn_number' => $data_plan_number[0]['ppn_number'],
+            'ppn_order' => $data_plan_number[0]['ppn_order'],
+            'ppn_company' => $data_plan_number[0]['ppn_company'],
+            'ppn_create_date' => date('Y-m-d'),
+            'ppn_start_month' => $data_plan_number[0]['ppn_start_month'],
+            'ppn_status' => '1',
+            'ppn_revise' => $data_plan_number[0]['ppn_revise'] + 1
+        ];
+
+        $save_plan = $this->m_plan->save_product_plan_number($data_ppn);
+
+
+        for ($i = 0; $i < count($data_plan_list); $i++) {
+            //ข้อมูลลงตาราง product_plan_list
+            $data_list = [
+                'ppl_order_number' => $data_plan_list[$i]['ppl_order_number'],
+                'ppl_job_code' => $data_plan_list[$i]['ppl_job_code'],
+                'ppl_lot' => $data_plan_list[$i]['ppl_lot'],
+                'ppl_model' => $data_plan_list[$i]['ppl_model'],
+                'ppn_id' => $save_plan
+            ];
+
+            $id_list = $this->m_plan->save_list($data_list);
+        }
+
+        echo '<script>window.history.back()</script>';
+    }
+
+    //change_month 
+    public function change_month()
+    {
+        $start_month = $this->input->post('start_month');
+        $ppn_id = $this->input->post('ppn_id');
+
+        //update month
+        $data = [
+            'ppn_start_month' => $start_month,
+            'ppn_id' => $ppn_id
+        ];
+
+        $update = $this->m_plan->update_month($data);
+        if ($update) {
+            echo '<script>window.history.back()</script>';
+        }
+    }
+
+    public function testtable(){
+        $this->load->view('product_action_plan/testtable');
+    }
+}
