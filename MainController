@@ -1,0 +1,539 @@
+<?php
+defined('BASEPATH') or exit('No direct script access allowed');
+require_once('application/controllers/Login.php');
+class Main_controller extends CI_Controller
+{
+
+	function __construct()
+	{
+		parent::__construct();
+		$this->load->model('M_menu', 'menu');
+		$this->load->library("session");
+		$this->load->helper('cookie');
+		$this->load->helper("url");
+
+		//print_r($_SESSION); die;
+		if (!empty($_SESSION['sess_empCode'])) {
+
+			// กรณียังไม่ได้กำหนด CI SESSION 
+			if (empty($_SESSION['UsEmpCode'])) {
+				$this->create_session_CI();
+			} else {
+				// กรณีมีการ login หลายคนให้สร้าง CI SESSION ใหม่ 
+				if ($_SESSION['sess_empCode'] != $_SESSION['UsEmpCode']) {
+					$this->create_session_CI();
+				} else {
+					// echo 'session ครบแล้วไม่ต้องเฮ็ดหยัง'; 
+				}
+			}
+		} else {
+			// to login ERP
+			redirect("Authentication/login");
+		}
+	}
+
+	function create_session_CI()
+	{
+		$this->load->model("Employee_model", "emp");
+		$res = $this->emp->employee($_SESSION['sess_empCode']);
+
+		if (isset($res[0])) {
+			$per = substr($res[0]['empCode'], 0, 2);
+			$picture = $res[0]['gender'] == 1 ? "images/icons-man.png" : "images/icons-lady.png";
+			$this->session->set_userdata('UsGroup', $per);
+			$this->session->set_userdata('UsID', $res[0]['empID']);
+			$this->session->set_userdata('UsPeople', $res[0]['peopleID']);
+			$this->session->set_userdata('UsEmpCode', $res[0]['empCode']);
+			$this->session->set_userdata('UsName', $res[0]['fName'] . " " . $res[0]['sName']);
+			$this->session->set_userdata('UsImg', $picture);
+			$this->session->set_userdata('UsBranch', $res[0]['empBCode']);
+			$this->session->set_userdata('UsPosCode', $res[0]['posCode']);
+			$this->session->set_userdata('UsPosName', $res[0]['posName']);
+			$this->session->set_userdata('UsDepName', $res[0]['depName']);
+			$this->session->set_userdata('UsDepCode', $res[0]['depID']);
+			$this->session->set_userdata('UsGender', $res[0]['gender']);
+			$this->session->set_userdata('logged_in', true);
+		}
+	}
+
+	public function index()
+	{
+	}
+
+	//MANAGE DISPLAY FRONT-END
+	function header()
+	{
+		$this->load->view('template/header');
+	}
+
+	function css()
+	{
+		$this->load->view('template/css');
+	}
+
+	function css_sign_box()
+	{
+		$this->load->view('template/css_sign_box');
+	}
+
+	function javascript()
+	{
+		$this->load->view('template/javascript');
+	}
+
+	function footer($data = '')
+	{
+		$this->load->view('template/footer');
+	}
+
+	function sidebar($data = '')
+	{
+		$this->load->view('template/sidebar', $data);
+	}
+
+
+	function output($body = '', $data = '')
+	{
+		if ($this->checkUser()) {
+			$this->header();
+			$this->css();
+			$this->javascript();
+			$rs	=	array();
+			$this->load->model('m_menu', 'menu');
+			$rs['obj'] = $menu = $this->menu;
+			$rs['menu'] = $mainmenu = $menu->get_main_menu();
+			// foreach ($mainmenu->result_array() as $key => $value) {
+			// 	$rs['submenu'] = $this->menu->get_sub_menu($value['menu_id']);
+			// }
+			$rs['submenu'] = $this->menu->get_sub_menu();
+			// echo "<pre>";
+			// print_r($rs);
+			// echo "<br><br>";
+			// die;
+			$this->sidebar($rs);
+			$this->load->model('m_menu', 'menu');
+			$this->load->view($body, $data);
+			$this->footer();
+		} else {
+			redirect(base_url());
+		}
+	}
+
+	function output_fancy($body = '', $data = '')
+	{
+		if ($this->checkUser()) {
+			$this->css();
+			$this->javascript();
+			$this->load->view($body, $data);
+		} else {
+			redirect(base_url());
+		}
+	}
+
+	function output_report($body = '', $data = '')
+	{
+		if ($this->checkUser()) {
+			$this->css_sign_box();
+			$this->javascript();
+			$this->load->view($body, $data);
+		} else {
+			redirect(base_url());
+		}
+	}
+
+	//CHECK SESSION
+	function checkUser()
+	{
+		if ($this->session->userdata('UsID')) {
+			return true;
+		} else {
+			//print_r($_SESSION); die;
+			//echo $empCode = $this->check_session(); 
+
+			$empCode = get_cookie('xempcode'); //$this->session->userdata('empCode');
+
+			if ($empCode) {
+				$this->load->model("Employee_model", "emp");
+				if (isset($empCode) && $empCode) {
+					$res = $this->emp->employee($empCode);
+				} else {
+
+					$res = $this->emp->employee($_GET['id']);
+				}
+
+				//หากใบรับรองการเข้าถึง ให้ยัด ข้อมูล การ join ทั้งหมดเข้าไปที่ session
+				if (isset($res[0])) {
+					//set_cookie('xempcode',$res[0]['empCode'],time()+86400);
+					//$this->session->set_userdata($res[0]);
+					$per = substr($res[0]['empCode'], 0, 2);
+					$picture = $res[0]['gender'] == 1 ? "images/icons-man.png" : "images/icons-lady.png";
+					$this->session->set_userdata('UsGroup', $per);
+					$this->session->set_userdata('UsID', $res[0]['empID']);
+					$this->session->set_userdata('UsPeople', $res[0]['peopleID']);
+					$this->session->set_userdata('UsEmpCode', $res[0]['empCode']);
+					$this->session->set_userdata('UsName', $res[0]['fName'] . " " . $res[0]['sName']);
+					$this->session->set_userdata('UsImg', $picture);
+					$this->session->set_userdata('UsBranch', $res[0]['empBCode']);
+					$this->session->set_userdata('UsPosCode', $res[0]['posCode']);
+					$this->session->set_userdata('UsPosName', $res[0]['posName']);
+					$this->session->set_userdata('UsDepName', $res[0]['depName']);
+					$this->session->set_userdata('UsDepCode', $res[0]['depCode']);
+					$this->session->set_userdata('UsGender', $res[0]['gender']);
+					$this->session->set_userdata('logged_in', TRUE);
+				}
+				return true;
+			}
+		}
+	}
+
+	// For Signature
+
+	function signature($sfh_id, $report_id, $section, $level, $ago_sec, $ago_level, $size_img)
+	{
+		// ====================
+		// $sfh_id = รหัส ID แบบฟอร์มที่มาจาก sign_form_reg
+		// $report_id = ID ที่มาจาก PK ของโปรแกรมเรา
+		// $section = เอกสารส่วนที่เท่าไหร่ของหน้าเอกสาร
+		// $level = ลำดับการเซ็น
+		// $ago_sec = ส่วนก่อนหน้า
+		// $ago_level = คนก่อนหน้า
+		// $size_img = ขนาดของรูปลายเซ็นต์
+		// sign = รูปลายเซ็นต์
+		// sign_name = ชื่อลายเซ็นต์
+		// sign_date = วันที่เซ็น
+		// ==================
+		$this->load->model('M_signatures', 'sign');
+		$path = $this->chk_path();
+		$chk_sign_con = $this->sign->chk_signature_con($sfh_id, $report_id, $section, $level);
+		if (!empty($chk_sign_con)) {
+			$chk_sign_con = $this->sign->chk_signature_con($sfh_id, $report_id, $section, $level);
+			if ($chk_sign_con->sdh_main_emp != $chk_sign_con->sdh_confirm_emp) {
+				$represent = "(แทน)";
+			} else {
+				$represent = "";
+			}
+			$sign = '<img src="' . $path . '/signature/signature/' . $chk_sign_con->sdh_confirm_emp . '.png" width="' . $size_img . '">' . $represent;
+			$sign_name = ($chk_sign_con->name);
+			$sign_date = $chk_sign_con->sdh_confirm_datetime;
+		} else {
+			//เช็คคนก่อนหน้าว่าเซ็นเเล้วหรือยัง ถ้ายังจะไม่โชว์ปุ่มเซ็นต์
+			if (!empty($ago_sec) and $ago_sec != '-') {
+				$chk_for_show = $this->sign->chk_for_showButton_test($sfh_id, $report_id, $ago_sec);
+				if (!empty($chk_for_show)) {
+					echo $this->button_sign($sfh_id, $report_id, $section, $level);
+				} else {
+				}
+				//โชว์ปุ่มเซ็นต์
+			} elseif ($ago_sec == '-' and $ago_level == '-') {
+				echo $this->button_sign($sfh_id, $report_id, $section, $level);
+			}
+			//echo $this->button_sign($sfh_id,$report_id,$section,$level);
+			$sign = "";
+			$sign_name = "";
+			$sign_date = "";
+		}
+		return array('sign' => $sign, 'sign_name' => $sign_name, 'sign_date' => $sign_date);
+	}
+
+	function chk_path()
+	{
+		$chk = strpos($_SERVER['HTTP_HOST'], '192');  //เช็คเข้าถึงจากภายนอกหรือไม่
+		$chk1 = strpos($_SERVER['HTTP_HOST'], 'pugpic');  //เช็คเข้าถึงจากภายนอกหรือไม่
+		if ($chk === false) {
+			if ($chk1 === false) {
+				$path = "http://powerutah/main";
+			} else {
+				$path = "http://pugpic.ddns.me:8855/main";
+			}
+		} else {
+			$path = "http://192.168.10.206/main";
+		}
+		return $path;
+	}
+
+	function sign_confirm_insert()
+	{
+		$this->load->model('M_signatures', 'sign');
+		$this->load->model('M_borrow_mac', 'bm');
+		$pwd       = md5($this->input->post('pwd'));
+		$sfh_id    = $this->input->post('sfh_id');
+		$report_id = $this->input->post('report_id');
+		$section   = $this->input->post('section');
+		$level     = $this->input->post('level');
+		$chk_pwd   = $this->sign->chk_pwd($this->session->userdata('UsPeople'), $pwd);
+		$chk_sign  = $this->sign->chk_signature($sfh_id, $report_id, $section, $level);
+		$chk_level  = $this->sign->chk_level($sfh_id, $report_id, $section, $level + 1);
+		if (!empty($chk_pwd) and empty($chk_sign->sdh_confirm_emp)) {
+			$array = array(
+				'sdh_confirm_emp'      =>  $this->session->userdata('UsEmpCode'),
+				'sdh_confirm_datetime' =>  date("Y-m-d H:i:s")
+			);
+			$this->sign->update($sfh_id, $report_id, $section, $level, $array);
+			if (empty($chk_sign->sdh_main_emp)) {
+				$array = array(
+					'sdh_main_emp'      =>  $this->session->userdata('UsEmpCode')
+				);
+				$this->sign->update($sfh_id, $report_id, $section, $level, $array);
+			}
+			if (!empty($chk_level)) {
+				$array_st = array(
+					'sdh_usage'      =>  1
+				);
+				$this->sign->update($sfh_id, $report_id, $section, $level + 1, $array_st);
+			}
+
+			if ($sfh_id == '178' and $section == '2' and $level == '1') {
+				$arr_notified = array(
+					'BMN_BMH_ID'	=>	$report_id,
+					'BMN_Datetime'	=>	date("Y-m-d H:i:s"),
+					'BMN_empcode_notified'	=>	$this->session->userdata('UsEmpCode'),
+					'BMN_mac'		=>	$this->input->post('In_BMN_mac'),
+					'BMN_date'		=>	$this->input->post('In_BMN_date'),
+					'BMN_time'		=>	$this->input->post('In_BMN_time'),
+					'BMN_material'	=>	$this->input->post('In_BMN_material'),
+					'BMN_material_amount'	=> $this->input->post('In_BMN_material_amount'),
+					'BMN_material_amount_stock'	=> $this->input->post('In_BMN_material_amount_stock'),
+					'BMN_remark_overdue'	=>	empty($this->input->post('In_BMN_remark_overdue')) ? null : $this->input->post('In_BMN_remark_overdue'),
+					'BMN_status'	=>	'1',
+					'BMN_cr_empCode'	=>	$this->session->userdata('UsEmpCode'),
+					'BMN_cr_datetime'	=>	date("Y-m-d H:i:s"),
+					'BMN_log_empCode'	=>	$this->session->userdata('UsEmpCode'),
+					'BMN_log_datetime'	=>	date("Y-m-d H:i:s")
+				);
+				$this->bm->insert_notified($arr_notified);
+			}
+
+			if ($sfh_id == '178' and $section == '2' and $level == '3') {
+				$arr_notified = array(
+					'BMN_Date_use'		=>	$this->input->post('In_BMN_Date_use'),
+					'BMN_log_empCode'	=>	$this->session->userdata('UsEmpCode'),
+					'BMN_log_datetime'	=>	date("Y-m-d H:i:s")
+				);
+				$this->bm->update_notified($arr_notified, $report_id);
+			}
+
+			if ($sfh_id == '178' and $section == '3' and $level == '1') {
+				$In_BMP_empcode	=	$this->input->post('In_BMP_empcode');
+				for ($i = 0; $i < sizeof($In_BMP_empcode); $i++) {
+					$arr_partaker = array(
+						'BMP_BMH_ID'		=>	$report_id,
+						'BMP_empcode'		=>	$In_BMP_empcode[$i],
+						'BMP_Status'		=>	'1',
+						'BMP_cr_empCode'	=>	$this->session->userdata('UsEmpCode'),
+						'BMP_cr_datetime'	=>	date("Y-m-d H:i:s"),
+						'BMP_log_empCode'	=>	$this->session->userdata('UsEmpCode'),
+						'BMP_log_datetime'	=>	date("Y-m-d H:i:s")
+					);
+					$this->bm->insert_partaker($arr_partaker);
+				}
+
+				$arr_borrow_mac_head = array(
+					'BMH_results'			=>	$this->input->post('In_BMH_results'),
+					'BMH_results_report'	=>	$this->input->post('In_BMH_results_report'),
+					'BMH_results_date'		=>	$this->input->post('In_BMH_results_date'),
+					'BMH_log_empcode'		=>  $this->session->userdata('UsEmpCode'),
+					'BMH_log_datetime'		=>	date("Y-m-d H:i:s")
+				);
+				$this->bm->update_BMH_Status_report($report_id, $arr_borrow_mac_head);
+
+				$arr_notified = array(
+					'BMN_amount_good'	=>	$this->input->post('In_BMN_amount_good'),
+					'BMN_amount_waste'	=>	$this->input->post('In_BMN_amount_waste'),
+					'BMN_log_empCode'	=>	$this->session->userdata('UsEmpCode'),
+					'BMN_log_datetime'	=>	date("Y-m-d H:i:s")
+				);
+				$this->bm->update_notified($arr_notified, $report_id);
+			}
+
+			echo "<script>alert('ลงนามสำเร็จ ...');</script>";
+			redirect('/../../../' . $chk_sign->sdh_path, 'refresh');
+		} else {
+			echo "<script>alert('ลงนามไม่สำเร็จ กรุณาลงนามใหม่อีกครั้ง ...');</script>";
+			redirect('/../../../' . $chk_sign->sdh_path, 'refresh');
+		}
+	}
+
+	function sign_insert($sfh_id, $report_id, $no, $section, $path, $level, $main_emp, $status)
+	{
+		$this->load->model('M_signatures', 'sign');
+		$array_sig = array(
+			'sdh_sfh_id'        => $sfh_id,
+			'sdh_report_id'     => $report_id,
+			'sdh_no'            => $no,
+			'sdh_section'       => $section,
+			'sdh_path'          => $path,
+			'sdh_level'         => $level,
+			'sdh_main_emp'      => $main_emp,
+			'sdh_main_datetime' => date('Y-m-d H:i:s'),
+			'sdh_usage'         => $status
+		);
+		$this->sign->insert($array_sig);
+	}
+
+	function button_sign($sfh_id, $report_id, $section, $level)
+	{
+		$this->load->model('M_signatures', 'sign');
+		$this->load->model('M_borrow_mac', 'bm');
+		$this->load->model('M_property_utah', 'pu');
+		$this->load->model('M_hr', 'hr');
+
+		$get_data_borrow = $get_bm = $this->bm->data_borrow_mac($report_id);
+		$get_arr_mac = $get_mac = $this->pu->data_mac($get_bm->BMH_MAC);
+		$get_data_partcode = $get_partcode = $this->pu->get_data_partcode();
+		$get_emp_create	=	$this->hr->get_data_emp();
+
+		$sizeof_get_arr_mac = sizeof($get_arr_mac);
+		$Arr_mac = '<select name="In_BMN_mac" style="font-size:14px;width:100%;" class="form-control select2">';
+		$Arr_mac .= '<option value="">- กรุณาเลือกเครื่องจักร -</option>';
+		for ($i = 0; $i < $sizeof_get_arr_mac; $i++) {
+			$Arr_mac .= '<option value="' . $get_arr_mac[$i]['HMNo'] . '">' . $get_arr_mac[$i]['HMNo'] . '</option>';
+		}
+
+		$sizeof_get_data_partcode = sizeof($get_data_partcode);
+		$Arr_partcode = '<select name="In_BMN_material" style="font-size:14px;width:100%;" class="form-control select2">';
+		$Arr_partcode .= '<option value="">- กรุณาเลือกเครื่องจักร -</option>';
+		for ($i = 0; $i < $sizeof_get_data_partcode; $i++) {
+			$Arr_partcode .= '<option value="' . $get_data_partcode[$i]['codeID'] . '">' . $get_data_partcode[$i]['codeID'] . '</option>';
+		}
+
+		$arr_emp = '<select class="form-control select2" multiple="multiple[]" name="In_BMP_empcode[]" data-placeholder="กรุณาเลือกชื่อ"
+		style="width: 100%;">';
+		foreach ($get_emp_create->result() as $r_empCreate) {
+			$selected = '';
+			$arr_emp .= '<option value="' . $r_empCreate->empCode . '" ' . $selected . '>' . $r_empCreate->fName . ' ' . $r_empCreate->sName . '</option>';
+		}
+
+		$path = $this->chk_path();
+		$chk_sign = $this->sign->chk_signature($sfh_id, $report_id, $section, $level);
+
+		if (empty($chk_sign)) {
+			$sdh_main_emp = "";
+			$name = "";
+		} else {
+			$sdh_main_emp = $chk_sign->sdh_main_emp;
+			$name = $chk_sign->name;
+		}
+		$id = "'" . $section . $level . "'";
+		$d_block = "'block'";
+		$d_none = "'none'";
+
+		$text1 = '	<style>
+		@media print {
+							#not-showprint { 
+			display: none; 
+		}
+	}
+	</style>
+	<div style="display:show" id="not-showprint">
+	<button onclick="document.getElementById(' . $id . ').style.display=' . $d_block . '" class="w3-btn button" style="background-color:orange;border-color:orange;width:auto;"> ลงนาม</button>
+	</div>
+	<div id="' . $section . $level . '" class="modal">
+	<form class="modal-content animate" action="' . site_url() . '/Main_controller/sign_confirm_insert" method="post" enctype="multipart/form-data">
+	<div class="imgcontainer">
+	<span onclick="document.getElementById(' . $id . ').style.display=' . $d_none . '" class="close" title="Close Modal">&times;</span>
+	</div>
+	<div class="container" style="font-size:18px;">';
+
+		if (!empty($chk_sign->sdh_main_emp) and !empty($this->session->userdata('UsName')) and ($chk_sign->sdh_main_emp == $this->session->userdata('UsEmpCode'))) {
+			$text2 = '<label for="uname"><b>ผู้ลงนาม ' . $name . '</b></label><br>';
+		} else {
+			$text2 = '<label for="uname"><b>ผู้ลงนาม ' . $name . '</b></label><br>
+		<label for="uname"><b>ลงนามแทน</b></label><br>
+		<input type="text" class="form-control" name="uname" value="' . $this->session->userdata('UsName') . '" readonly> ';
+		}
+
+		if ($sfh_id == '178' and $section == '2' and $level == '1') {
+			$text4 = '
+		<label>เครื่องจักร</label>
+		<br>
+		' . $Arr_mac . '
+		</select>
+		<label>วันที่พร้อมใช้งาน</label>
+		<input type="text" class="form-control datepicker" name="In_BMN_date" id="In_BMN_date"  value="' . $get_bm->BMH_Dateneed . '" required>
+		<label>เวลาที่พร้อมใช้งาน</label>
+		<input type="text" class="form-control" name="In_BMN_time" id="In_BMN_time" placeholder="08.00-17.00" value="" required>
+		<label>เครื่องจักร</label>
+		<br>
+		' . $Arr_partcode . '
+		</select>
+		<label>จำนวนวัตถุดิบ</label>
+		<input type="number" class="form-control" style="width:100%;" name="In_BMN_material_amount" id="In_BMN_material_amount" placeholder="จำนวนวัตถุดิบ" value="" required>
+		<label>จำนวน stock วัตถุดิบ</label>
+		<input type="number" class="form-control" style="width:100%;" name="In_BMN_material_amount_stock" id="In_BMN_material_amount_stock" placeholder="จำนวน stock วัตถุดิบ" value="" required>
+		<label>สาเหตุที่ไม่สามารถกำหนดวันที่พร้อมใช้งานได้ภายใน 3 วัน</label>
+		<input type="text" class="form-control" name="In_BMN_remark_overdue" id="In_BMN_remark_overdue" placeholder="สาเหตุที่ไม่สามารถกำหนดวันที่พร้อมใช้งานได้ภายใน 3 วัน" value="">';
+		}
+
+		if ($sfh_id == '178' and $section == '2' and $level == '3') {
+			$text5 = '<label>วันที่ใช้เครื่องจักร</label>
+		<input type="text" class="form-control datepicker" name="In_BMN_Date_use" id="In_BMN_Date_use"  value="' . $get_bm->BMH_Dateneed . '" required>';
+		}
+
+		if ($sfh_id == '178' and $section == '3' and $level == '1') {
+			$text6 = '<label>ผู้เข้าร่วมการทดลอง</label>
+		<br>
+		' . $arr_emp . '
+		</select>
+		<div class="row">
+		<div class="col-md-12">
+		<label>ผลการทดลองเบื้องต้น</label>
+		<input type="text" class="form-control" name="In_BMH_results" id="In_BMH_results"  value="">
+		</div>
+		</div>
+		<div class="row">
+		<div class="col-md-6">
+		<label>เลขที่เอกสารสรุปผลการทดลอง</label>
+		<input type="text" class="form-control" name="In_BMH_results_report" id="In_BMH_results_report"  value="">
+		</div>
+		<div class="col-md-6">
+		<label>วันที่ออกเอกสารสรุปผลการทดลอง</label>
+		<input type="text" class="form-control datepicker" name="In_BMH_results_date" id="In_BMH_results_date"  value=""> 
+		</div>
+		</div>
+		<div class="row">
+		<div class="col-md-6">
+		<label>ของดี</label>
+		<input type="text" class="form-control" name="In_BMN_amount_good" id="In_BMN_amount_good"  value="" required>
+		</div>
+		<div class="col-md-6">
+		<label>ของเสีย</label>
+		<input type="text" class="form-control" name="In_BMN_amount_waste" id="In_BMN_amount_waste"  value="" required>
+		</div>
+		</div>';
+		}
+
+		$text3 = '<label><b>Password</b></label>
+	<input type="password" placeholder="Enter Password" name="pwd" required>
+	<input type="hidden" name="sfh_id" value="' . $sfh_id . '" >
+	<input type="hidden" name="report_id" value="' . $report_id . '" >
+	<input type="hidden" name="section" value="' . $section . '" >
+	<input type="hidden" name="level" value="' . $level . '" >
+	<button type="submit">บันทึกข้อมูล</button>
+	</div>
+	</form>
+	</div>';
+
+		if ($sfh_id == '178' and $section == '2' and $level == '1') {
+			$text = $text1 . $text4 . $text2 . $text3;
+		} elseif ($sfh_id == '178' and $section == '2' and $level == '3') {
+			$text = $text1 . $text5 . $text2 . $text3;
+		} elseif ($sfh_id == '178' and $section == '3' and $level == '1') {
+			$text = $text1 . $text6 . $text2 . $text3;
+		} else {
+			$text = $text1 . $text2 . $text3;
+		}
+
+		return $text;
+	}
+
+	function blank_page($body = '', $data = '')
+	{
+		if ($this->checkUser()) {
+			$this->css();
+			$this->javascript();
+			$this->load->view($body, $data);
+		} else {
+			redirect(base_url());
+		}
+	}
+}
